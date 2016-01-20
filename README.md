@@ -51,7 +51,7 @@ implicit
 request url:   
 `http://127.0.0.1:8045/monitor?json=1 `  
 
-![Screenshot](https://github.com/0xc0dec/ustats/wiki/shot1.png)
+![Screenshot](./doc/monitor.jpg)
 
 * Note    
  `this module not support `dynamic manage upstream` forexample 'tengine dyups module'.`
