@@ -1,0 +1,382 @@
+diff -u -N -r tengine-2.1.1/src/core/ngx_core.h tengine-2.1.1-ustats/src/core/ngx_core.h
+--- tengine-2.1.1/src/core/ngx_core.h	2015-08-13 17:37:01.000000000 +0800
++++ tengine-2.1.1-ustats/src/core/ngx_core.h	2016-01-20 14:49:01.867116175 +0800
+@@ -108,4 +108,66 @@
+ #define NGX_DISABLE_SYMLINKS_NOTOWNER   2
+ #endif
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++
++/// String length for last failed access time parameter
++#define USTATS_LAST_FAIL_STR_LEN            sizeof(u_char) * 24
++
++/// Stat offset relative to the peer position within the shared memory
++#define USTATS_REQ_STAT_OFFSET                    0
++
++#define USTATS_TS_OFFSET                      (USTATS_REQ_STAT_OFFSET + sizeof(ngx_uint_t))
++
++#define USTATS_REQ_COUNT_OFFSET               (USTATS_TS_OFFSET + sizeof(time_t))
++#define USTATS_REQ_COUNT_1_OFFSET             (USTATS_REQ_COUNT_OFFSET + sizeof(ngx_uint_t))
++#define USTATS_REQ_COUNT_2_OFFSET             (USTATS_REQ_COUNT_1_OFFSET + sizeof(ngx_uint_t))
++#define USTATS_REQ_COUNT_3_OFFSET             (USTATS_REQ_COUNT_2_OFFSET + sizeof(ngx_uint_t))
++
++#define USTATS_REQ_TIMES_OFFSET               (USTATS_REQ_COUNT_3_OFFSET + sizeof(ngx_uint_t))
++#define USTATS_REQ_TIMES_1_OFFSET             (USTATS_REQ_TIMES_OFFSET + sizeof(ngx_uint_t))
++#define USTATS_REQ_TIMES_2_OFFSET             (USTATS_REQ_TIMES_1_OFFSET + sizeof(ngx_uint_t))
++#define USTATS_REQ_TIMES_3_OFFSET             (USTATS_REQ_TIMES_2_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds HTTP 499 errors count
++#define USTATS_HTTP499_STAT_OFFSET            (USTATS_REQ_TIMES_3_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds HTTP 499 + 5xx errors count
++#define USTATS_HTTP5XX_STAT_OFFSET            (USTATS_HTTP499_STAT_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds HTTP 500 errors count
++#define USTATS_HTTP500_STAT_OFFSET            (USTATS_HTTP5XX_STAT_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds HTTP 503 errors count
++#define USTATS_HTTP503_STAT_OFFSET            (USTATS_HTTP500_STAT_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds TCP errors count
++#define USTATS_TCP_ERR_STAT_OFFSET            (USTATS_HTTP503_STAT_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds read timeouts count
++#define USTATS_READ_TIMEOUT_STAT_OFFSET         (USTATS_TCP_ERR_STAT_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds write timeouts count
++#define USTATS_WRITE_TIMEOUT_STAT_OFFSET        (USTATS_READ_TIMEOUT_STAT_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds last failed access time across all workers
++#define USTATS_LAST_FAIL_TIME_STAT_OFFSET       (USTATS_WRITE_TIMEOUT_STAT_OFFSET + sizeof(ngx_uint_t))
++
++/// Holds first stat access time across all workers
++#define USTATS_START_TIME_STAT_OFFSET          (USTATS_LAST_FAIL_TIME_STAT_OFFSET + USTATS_LAST_FAIL_STR_LEN)
++
++/// Holds total fails count since server startup
++#define USTATS_FAIL_COUNT_STAT_OFFSET         (USTATS_START_TIME_STAT_OFFSET + USTATS_LAST_FAIL_STR_LEN)
++
++/// Number of counters for each peer
++#define USTATS_PEER_SEGMENT_LENGTH            (USTATS_FAIL_COUNT_STAT_OFFSET + sizeof(ngx_uint_t))
++
++#define USTATS_CALC_ADDRESS(peer_offset, param_offset)  (((u_char*)stats_data->data) + (peer_offset) + (param_offset))
++
++/// Shared memory for storing counters. Defined in ngx_http_ustats_module.c
++extern ngx_shm_zone_t * stats_data;
++/// Counter used to distribute shared memory among backends
++extern ngx_uint_t ustats_shm_offset;
++
++#endif
++
+ #endif /* _NGX_CORE_H_INCLUDED_ */
+diff -u -N -r tengine-2.1.1/src/event/ngx_event_connect.h tengine-2.1.1-ustats/src/event/ngx_event_connect.h
+--- tengine-2.1.1/src/event/ngx_event_connect.h	2015-08-13 17:37:01.000000000 +0800
++++ tengine-2.1.1-ustats/src/event/ngx_event_connect.h	2016-01-20 14:49:01.867116175 +0800
+@@ -63,6 +63,10 @@
+ 
+     ngx_log_t                       *log;
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++    void                            *rr_data;
++#endif
++
+     unsigned                         cached:1;
+ 
+     unsigned                         resolved:2;
+diff -u -N -r tengine-2.1.1/src/http/modules/ngx_http_upstream_keepalive_module.c tengine-2.1.1-ustats/src/http/modules/ngx_http_upstream_keepalive_module.c
+--- tengine-2.1.1/src/http/modules/ngx_http_upstream_keepalive_module.c	2015-08-13 17:37:01.000000000 +0800
++++ tengine-2.1.1-ustats/src/http/modules/ngx_http_upstream_keepalive_module.c	2016-01-20 14:49:01.867116175 +0800
+@@ -204,6 +204,10 @@
+     r->upstream->peer.get = ngx_http_upstream_get_keepalive_peer;
+     r->upstream->peer.free = ngx_http_upstream_free_keepalive_peer;
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++    r->upstream->peer.rr_data = kp->data;
++#endif
++
+ #if (NGX_HTTP_SSL)
+     kp->original_set_session = r->upstream->peer.set_session;
+     kp->original_save_session = r->upstream->peer.save_session;
+diff -u -N -r tengine-2.1.1/src/http/ngx_http_upstream.c tengine-2.1.1-ustats/src/http/ngx_http_upstream.c
+--- tengine-2.1.1/src/http/ngx_http_upstream.c	2015-08-13 17:37:01.000000000 +0800
++++ tengine-2.1.1-ustats/src/http/ngx_http_upstream.c	2016-01-20 15:05:29.531073036 +0800
+@@ -1338,6 +1338,18 @@
+ 
+     c = u->peer.connection;
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++    if (stats_data) {
++        ngx_http_upstream_rr_peer_data_t *rrp = u->peer.rr_data ? u->peer.rr_data : u->peer.data;
++        ngx_uint_t request_count = ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(
++            rrp->peers->peer[rrp->current].shm_start_offset, USTATS_REQ_STAT_OFFSET), 1);
++        if (request_count == 0) {
++            *(time_t*)(USTATS_CALC_ADDRESS(
++                rrp->peers->peer[rrp->current].shm_start_offset, USTATS_START_TIME_STAT_OFFSET)) = ngx_time();
++        }
++    }
++#endif
++
+     c->data = r;
+ 
+     c->write->handler = ngx_http_upstream_handler;
+@@ -1999,6 +2011,12 @@
+                    "http upstream send request handler");
+ 
+     if (c->write->timedout) {
++#if (NGX_HAVE_USTATS_MODULE)
++        if (stats_data) {
++            ngx_http_upstream_rr_peer_data_t *rrp = u->peer.rr_data ? u->peer.rr_data : u->peer.data;
++            ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(rrp->peers->peer[rrp->current].shm_start_offset, USTATS_WRITE_TIMEOUT_STAT_OFFSET), 1);
++        }
++#endif
+         ngx_http_upstream_next(r, u, NGX_HTTP_UPSTREAM_FT_TIMEOUT);
+         return;
+     }
+@@ -2044,6 +2062,13 @@
+     c->log->action = "reading response header from upstream";
+ 
+     if (c->read->timedout) {
++#if (NGX_HAVE_USTATS_MODULE)
++        if (stats_data) {
++            ngx_http_upstream_rr_peer_data_t *rrp = u->peer.rr_data ? u->peer.rr_data : u->peer.data;
++            ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(
++                rrp->peers->peer[rrp->current].shm_start_offset, USTATS_READ_TIMEOUT_STAT_OFFSET), 1);
++        }
++#endif
+         ngx_http_upstream_next(r, u, NGX_HTTP_UPSTREAM_FT_TIMEOUT);
+         return;
+     }
+@@ -2107,6 +2132,7 @@
+         if (n == 0) {
+             ngx_log_error(NGX_LOG_ERR, c->log, 0,
+                           "upstream prematurely closed connection");
++            // TODO increase TCP errors here
+         }
+ 
+         if (n == NGX_ERROR || n == 0) {
+@@ -2219,6 +2245,29 @@
+ 
+     status = u->headers_in.status_n;
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++    if (stats_data) {
++        ngx_http_upstream_rr_peer_data_t *rrp = u->peer.rr_data ? u->peer.rr_data : u->peer.data;
++        switch (status) {
++            case 500:
++                ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(
++                    rrp->peers->peer[rrp->current].shm_start_offset, USTATS_HTTP500_STAT_OFFSET), 1);
++            break;
++            case 503:
++                ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(
++                    rrp->peers->peer[rrp->current].shm_start_offset, USTATS_HTTP503_STAT_OFFSET), 1);
++            break;
++            default:
++            break;
++        }
++
++        if (499 < status && status < 600) {
++          ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(
++              rrp->peers->peer[rrp->current].shm_start_offset, USTATS_HTTP5XX_STAT_OFFSET), 1);
++        }
++    }
++#endif
++
+     for (un = ngx_http_upstream_next_errors; un->status; un++) {
+ 
+         if (status != un->status) {
+@@ -2421,6 +2470,15 @@
+         if (err) {
+             c->log->action = "connecting to upstream";
+             (void) ngx_connection_error(c, err, "connect() failed");
++
++#if (NGX_HAVE_USTATS_MODULE)
++            if (stats_data) {
++                ngx_http_request_t *r = c->data;
++                ngx_http_upstream_rr_peer_data_t *rrp = r->upstream->peer.rr_data ? r->upstream->peer.rr_data : r->upstream->peer.data;
++                ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(rrp->peers->peer[rrp->current].shm_start_offset, USTATS_TCP_ERR_STAT_OFFSET), 1);
++            }
++#endif
++
+             return NGX_ERROR;
+         }
+     }
+@@ -3712,6 +3770,21 @@
+     ngx_uint_t                 status, state;
+     ngx_http_core_loc_conf_t  *clcf;
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++    if (stats_data) {
++        ngx_http_upstream_rr_peer_data_t *rrp = u->peer.rr_data ? u->peer.rr_data : u->peer.data;
++        if (
++            rrp->peers->peer[rrp->current].fails + 1 >= rrp->peers->peer[rrp->current].max_fails
++            || rrp->peers->peer[rrp->current].max_fails == 1
++        ) {
++            // Update last fail time
++            *(time_t*)(USTATS_CALC_ADDRESS(rrp->peers->peer[rrp->current].shm_start_offset, USTATS_LAST_FAIL_TIME_STAT_OFFSET)) = ngx_time();
++            // Increase fails count
++            ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(rrp->peers->peer[rrp->current].shm_start_offset, USTATS_FAIL_COUNT_STAT_OFFSET), 1);
++        }
++    }
++#endif
++
+     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                    "http next upstream, %xi", ft_type);
+ 
+@@ -4012,6 +4085,15 @@
+         rc = ngx_http_send_special(r, NGX_HTTP_FLUSH);
+     }
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++    if (stats_data) {
++        ngx_http_upstream_rr_peer_data_t *rrp = u->peer.rr_data ? u->peer.rr_data : u->peer.data;
++        if (rc == NGX_HTTP_CLIENT_CLOSED_REQUEST) {
++            ngx_atomic_fetch_add((ngx_uint_t*)USTATS_CALC_ADDRESS(rrp->peers->peer[rrp->current].shm_start_offset, USTATS_HTTP499_STAT_OFFSET), 1);
++        }
++    }
++#endif
++
+     ngx_http_finalize_request(r, rc);
+ }
+ 
+diff -u -N -r tengine-2.1.1/src/http/ngx_http_upstream_round_robin.c tengine-2.1.1-ustats/src/http/ngx_http_upstream_round_robin.c
+--- tengine-2.1.1/src/http/ngx_http_upstream_round_robin.c	2015-08-13 17:37:01.000000000 +0800
++++ tengine-2.1.1-ustats/src/http/ngx_http_upstream_round_robin.c	2016-01-20 15:03:14.983078913 +0800
+@@ -23,6 +23,12 @@
+ #endif
+ 
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++ngx_uint_t ustats_shm_offset = 0;
++static ngx_int_t
++ngx_http_upstream_cmp_implicit_servers(const void * one, const void * two);
++#endif
++
+ ngx_int_t
+ ngx_http_upstream_init_round_robin(ngx_conf_t *cf,
+     ngx_http_upstream_srv_conf_t *us)
+@@ -76,6 +82,12 @@
+             }
+ 
+             for (j = 0; j < server[i].naddrs; j++) {
++#if (NGX_HAVE_USTATS_MODULE)
++                peers->peer[n].peer_server = server + i;
++                peers->peer[n].shm_start_offset = ustats_shm_offset;
++                ustats_shm_offset += USTATS_PEER_SEGMENT_LENGTH;
++#endif
++
+                 peers->peer[n].sockaddr = server[i].addrs[j].sockaddr;
+                 peers->peer[n].socklen = server[i].addrs[j].socklen;
+                 peers->peer[n].name = server[i].addrs[j].name;
+@@ -143,6 +155,12 @@
+             }
+ 
+             for (j = 0; j < server[i].naddrs; j++) {
++#if (NGX_HAVE_USTATS_MODULE)
++                backup->peer[n].peer_server = server + i; 
++                backup->peer[n].shm_start_offset = ustats_shm_offset; 
++                ustats_shm_offset += USTATS_PEER_SEGMENT_LENGTH;
++#endif
++
+                 backup->peer[n].sockaddr = server[i].addrs[j].sockaddr;
+                 backup->peer[n].socklen = server[i].addrs[j].socklen;
+                 backup->peer[n].name = server[i].addrs[j].name;
+@@ -230,6 +248,24 @@
+ #endif
+     }
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++    /**
++     * Implicit peers order may change between two
++     * configuration rescans. To maintain pointer
++     * correctness, we sort peers here
++     */
++
++    ngx_sort(&peers->peer[0], (size_t)u.naddrs,
++        sizeof(ngx_http_upstream_rr_peer_t),
++        ngx_http_upstream_cmp_implicit_servers);
++
++    for (i = 0; i < u.naddrs; i++) {
++        peers->peer[i].peer_server = NULL;
++        peers->peer[i].shm_start_offset = ustats_shm_offset;
++        ustats_shm_offset += USTATS_PEER_SEGMENT_LENGTH;
++    }
++#endif
++
+     us->peer.data = peers;
+ 
+     /* implicitly defined upstream has no backup servers */
+@@ -237,6 +273,18 @@
+     return NGX_OK;
+ }
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++static ngx_int_t
++ngx_http_upstream_cmp_implicit_servers(const void * one, const void * two)
++{
++    ngx_http_upstream_rr_peer_t *first, *second;
++
++    first = (ngx_http_upstream_rr_peer_t*)one;
++    second = (ngx_http_upstream_rr_peer_t*)two;
++
++    return ngx_strcmp(first->name.data, second->name.data);
++}
++#endif
+ 
+ ngx_int_t
+ ngx_http_upstream_init_round_robin_peer(ngx_http_request_t *r,
+diff -u -N -r tengine-2.1.1/src/http/ngx_http_upstream_round_robin.h tengine-2.1.1-ustats/src/http/ngx_http_upstream_round_robin.h
+--- tengine-2.1.1/src/http/ngx_http_upstream_round_robin.h	2015-08-13 17:37:01.000000000 +0800
++++ tengine-2.1.1-ustats/src/http/ngx_http_upstream_round_robin.h	2016-01-20 14:49:01.875116175 +0800
+@@ -41,6 +41,12 @@
+ #if (NGX_HTTP_SSL)
+     ngx_ssl_session_t              *ssl_session;   /* local to a process */
+ #endif
++
++#if (NGX_HAVE_USTATS_MODULE)
++    /* points to the server whose configuration was used for this peer */
++    ngx_http_upstream_server_t      *peer_server;
++    ngx_uint_t                      shm_start_offset;
++#endif
+ } ngx_http_upstream_rr_peer_t;
+ 
+ 
+diff -u -N -r tengine-2.1.1/src/os/unix/ngx_process_cycle.c tengine-2.1.1-ustats/src/os/unix/ngx_process_cycle.c
+--- tengine-2.1.1/src/os/unix/ngx_process_cycle.c	2015-08-13 17:37:01.000000000 +0800
++++ tengine-2.1.1-ustats/src/os/unix/ngx_process_cycle.c	2016-01-20 15:11:04.519058404 +0800
+@@ -10,6 +10,14 @@
+ #include <ngx_event.h>
+ #include <ngx_channel.h>
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++/**
++ * Shared memory last write peer index.
++ * Reset when sighup is received by nginx
++ */
++extern ngx_uint_t ustats_shm_offset;
++#endif
++
+ 
+ #define NGX_PIPE_STILL_NEEDED     2
+ 
+@@ -243,6 +251,11 @@
+         if (ngx_reconfigure) {
+             ngx_reconfigure = 0;
+ 
++#if (NGX_HAVE_USTATS_MODULE)
++            stats_data = NULL;
++            ustats_shm_offset = 0;
++#endif
++
+             if (ngx_new_binary) {
+                 ngx_start_worker_processes(cycle, ccf->worker_processes,
+                                            NGX_PROCESS_RESPAWN);
+@@ -358,6 +371,10 @@
+ 
+         if (ngx_reconfigure) {
+             ngx_reconfigure = 0;
++#if (NGX_HAVE_USTATS_MODULE)
++            stats_data = NULL;
++            ustats_shm_offset = 0;
++#endif
+             ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0, "reconfiguring");
+ 
+             cycle = ngx_init_cycle(cycle);
