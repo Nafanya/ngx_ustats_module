@@ -40,11 +40,13 @@ request url:
 	]
 }
 ```       
-upstream naem:     
+upstream name:     
 [   
     [peer_name, down, failed, requests, RPS, SPEED, 499, 5xx, 500, 503, tcp_errors, R_timeouts, w_timeouts, f_t, m_f, s_t, last_fail_t, tot_f],
 implicit    
 ]
+
+`implicit`: means different upstream (if implicit 1 means 'implicit' upstream for example `proxy_pass`). 
 
 5xx:  499 < x < 600 explict 500 503
 * Html Show    
