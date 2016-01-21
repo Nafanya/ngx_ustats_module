@@ -112,7 +112,7 @@ const char HTML[] =
 		"\n"
 		"        <script>\n"
 		"            var REFRESH_INTERVAL = %d;\n"
-		"            var TABLE_COLUMNS_COUNT = 17;\n"
+		"            var TABLE_COLUMNS_COUNT = 18;\n"
 		"\n"
 		"            var updating = 0;\n"
 		"            var sortInfo = new Array();\n"
@@ -384,7 +384,7 @@ const char HTML[] =
 		"                data = eval('(' + data + ')');\n"
 		"\n"
 		"                var headers = [\"Upstream\", \"Backend\", \"Requests\", \"RPS\", \"Req. time (ms)\", \"HTTP 499\", \"HTTP 5XX\", \"HTTP 500\", \"HTTP 503\", \"TCP errors\", \"HTTP<br/>read timeouts\",\n"
-		"                               \"HTTP<br/>write timeouts\", \"Fail timeouts, sec.\", \"Max fails\", \"Start time\", \"Last fail\", \"Total fails\"];\n"
+		"                               \"HTTP<br/>write timeouts\", \"Weight\" ,\"Fail timeouts, sec.\", \"Max fails\", \"Start time\", \"Last fail\", \"Total fails\"];\n"
 		"\n"
 		"                var table = document.createElement(\"table\");\n"
 		"\n"
@@ -474,7 +474,7 @@ const char HTML[] =
 		"                            backendRow.appendChild(paramCell);\n"
 		"\n"
 		"                            // Detect what column this parameter resides in and allow/disallow sorting\n"
-		"                            if (param != 0 && param != 13 && param != 14) // not name, not fail timeout and not max fails\n"
+		"                            if (param != 0 && param != 14 && param != 15) // not name, not fail timeout and not max fails\n"
 		"                            {\n"
 		"                                paramCell.className += \" cellSortTrigger\";\n"
 		"                                paramCell.setAttribute(\"onclick\", \"onSortTriggerClick(this);\");\n"
@@ -956,7 +956,7 @@ static ngx_buf_t * ngx_http_ustats_create_response_json(ngx_http_request_t * r)
 			size += (sizeof(ngx_uint_t) + sizeof(", ")) * 2;
 
 			// numeric parameters
-			size += (sizeof(ngx_uint_t) + sizeof(", ")) * 13;
+			size += (sizeof(ngx_uint_t) + sizeof(", ")) * 14;
 
 			// start time string
       size += sizeof(u_char) * 24 + sizeof("\"\"") + sizeof(", ");
@@ -1053,6 +1053,8 @@ static ngx_buf_t * ngx_http_ustats_create_response_json(ngx_http_request_t * r)
 			b->last = ngx_sprintf(b->last, "%d, ", *(ngx_uint_t*)USTATS_CALC_ADDRESS(peers->peer[k].shm_start_offset, USTATS_READ_TIMEOUT_STAT_OFFSET));
 			// http write timeouts
 			b->last = ngx_sprintf(b->last, "%d, ", *(ngx_uint_t*)USTATS_CALC_ADDRESS(peers->peer[k].shm_start_offset, USTATS_WRITE_TIMEOUT_STAT_OFFSET));
+			// weight
+			b->last = ngx_sprintf(b->last, "%ui, ", peers->peer[k].weight);
 			// fail timeout
 			b->last = ngx_sprintf(b->last, "%ui, ", peers->peer[k].fail_timeout);
 			// max fails
