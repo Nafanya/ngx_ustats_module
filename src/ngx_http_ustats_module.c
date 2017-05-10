@@ -944,12 +944,13 @@ static ngx_buf_t * ngx_http_ustats_create_response_json(ngx_http_request_t * r)
 				size += (!peers->peer[k].peer_server)
 							? (uscf->host.len + 1) * sizeof(u_char) // for implicit backends
 							// for the (good of) rest (of us, except the ones who are dead) (c)
-							: (peers->peer[k].peer_server->host.len + 1) * sizeof(u_char);
+                            ///: (peers->peer[k].peer_server->host.len + 1) * sizeof(u_char);
+                            : 0;
 			}
 			// one server <-> one peer - write server config name
 			else
 			{
-				size += (peers->peer[k].peer_server->host.len + 1) * sizeof(u_char);
+                size += 0;///(peers->peer[k].peer_server->host.len + 1) * sizeof(u_char);
 			}
 
 			// disabled and blacklisted
@@ -1006,12 +1007,12 @@ static ngx_buf_t * ngx_http_ustats_create_response_json(ngx_http_request_t * r)
 				// Initial config name (unresolved)
 				b->last = (!peers->peer[k].peer_server)
 								? ngx_sprintf(b->last, " (%s)", uscf->host.data)
-								: ngx_sprintf(b->last, " (%s)", (char*)peers->peer[k].peer_server->host.data);
+                                : ngx_sprintf(b->last, " (%s)", "");///(char*)peers->peer[k].peer_server->host.data);
 			}
 			else
 			{
-				b->last = ngx_sprintf(b->last, "%s", (peers->peer[k].peer_server->host.data
-						? (char*)peers->peer[k].peer_server->host.data
+                b->last = ngx_sprintf(b->last, "%s", (0///peers->peer[k].peer_server->host.data
+                        ? "" ///(char*)peers->peer[k].peer_server->host.data
 						: (char*)uscf->host.data));
 			}
 
@@ -1090,9 +1091,9 @@ static ngx_buf_t * ngx_http_ustats_create_response_json(ngx_http_request_t * r)
 
 		// implicit
 		unsigned implicit = 0;
-		if ((peers->number && (!peers->peer[0].peer_server || !peers->peer[0].peer_server->host.data))) {
-			implicit = 1;
-                }
+//		if ((peers->number && (!peers->peer[0].peer_server || !peers->peer[0].peer_server->host.data))) {
+//			implicit = 1;
+//                }
 
 		b->last = ngx_sprintf(b->last, "		%d\n", implicit);
 
@@ -1142,14 +1143,14 @@ static ngx_int_t ngx_http_ustats_log_handler(ngx_http_request_t *r)
   state = r->upstream_states->elts;
   if ( state[0].peer && state[0].status)
   {
-      ms = (ngx_msec_int_t)(state[0].response_sec * 1000 + state[0].response_msec);
+      ms = (ngx_msec_int_t)(state[0].response_time * 1000 + state[0].response_time);
       ms = ngx_max(ms, 0);
 
       ngx_http_upstream_rr_peer_data_t *rrp = r->upstream->peer.rr_data ? r->upstream->peer.rr_data : r->upstream->peer.data;
 
-      volatile ngx_uint_t *ts_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->peers->peer[rrp->current].shm_start_offset, USTATS_TS_OFFSET);
-      volatile ngx_uint_t *rps_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->peers->peer[rrp->current].shm_start_offset, USTATS_REQ_COUNT_OFFSET);
-      volatile ngx_uint_t *speed_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->peers->peer[rrp->current].shm_start_offset, USTATS_REQ_TIMES_OFFSET);
+      volatile ngx_uint_t *ts_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->current->shm_start_offset, USTATS_TS_OFFSET);
+      volatile ngx_uint_t *rps_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->current->shm_start_offset, USTATS_REQ_COUNT_OFFSET);
+      volatile ngx_uint_t *speed_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->current->shm_start_offset, USTATS_REQ_TIMES_OFFSET);
 
       ngx_time_t *tp = ngx_timeofday();
       time_t stat_now = ngx_atomic_fetch_add(ts_ptr, 0);
@@ -1176,14 +1177,14 @@ static ngx_int_t ngx_http_ustats_log_handler(ngx_http_request_t *r)
           //сбросим данные текущей ячейки
           ngx_uint_t rps_count = ngx_atomic_fetch_add(rps_ptr, 0);
           ngx_uint_t speed_count = ngx_atomic_fetch_add(speed_ptr, 0);
-          ngx_atomic_fetch_add(rps_ptr, -rps_count + 1);
-          ngx_atomic_fetch_add(speed_ptr, -speed_count + ms);
+          ngx_atomic_fetch_add(rps_ptr, (-rps_count + 1));
+          ngx_atomic_fetch_add(speed_ptr, (-speed_count + ms));
 
           speed_count = rps_count > 0 ? speed_count/rps_count : 0;
 
           //сохраним для истории
-          volatile ngx_uint_t *history_rps_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->peers->peer[rrp->current].shm_start_offset, rps_offset);
-          volatile ngx_uint_t *history_speed_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->peers->peer[rrp->current].shm_start_offset, speed_offset);
+          volatile ngx_uint_t *history_rps_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->current->shm_start_offset, rps_offset);
+          volatile ngx_uint_t *history_speed_ptr = (ngx_uint_t*)USTATS_CALC_ADDRESS( rrp->current->shm_start_offset, speed_offset);
 
           ngx_uint_t history_rps_count = ngx_atomic_fetch_add(history_rps_ptr, 0);
           ngx_uint_t history_speed_count = ngx_atomic_fetch_add(history_speed_ptr, 0);
